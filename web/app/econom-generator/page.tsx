@@ -2,19 +2,17 @@
 import React, { useMemo, useState } from "react";
 
 /**
- * EcoNom – Générateur v1 (PNJ + Caravane)
+ * EcoNom – Générateur (v1 propre)
+ * Next.js App Router – page client unique
  *
- * ⚙️ Spécs implémentées (v1):
- * - 12 compétences (4 familles). Titre = 2 compétences → 2 épithètes (animal/végétal) + article correct + Terrain.
- * - 6 Clans : Yashan (Social), Veygirh (Technique), Tengun (Martial), Bakaar (Survie), Ulgar (Technique), Khazrak (Survie)
- *   → +2 compétences au CHOIX dans la famille du clan (doublons autorisés).
- * - Biomes & Déserts complets. Article auto: du / de la / de l' / des.
- * - Inventaire PNJ : réglette globale 0–4 objets par PNJ (valeur exacte). Doublons autorisés.
- *   Familles d'objets = CHOIX de bonus au craft (ex. Arme Pierre=1 bonus, Silex=2, Fer=3). Armure = +1 PA cumulable.
- * - Caravane : réglette nombre de PNJ (placeholder), réglette TOTAL RESSOURCES (pool global non réparti pour l’instant), listes faune/flore.
- * - Export JSON, Impression cartes Recto/Verso.
- *
- * 🔜 À venir (v2+): répartition des ressources, règles Eau/Viande/Plantes, profils & compatibilité de clans, modules contraints, vitesse Voyage, gabarit visuel final.
+ * - 12 compétences (4 familles)
+ * - Titre = 2 compétences → 2 épithètes + article correct + terrain
+ * - 6 Clans → +2 compétences dans leur famille (doublons autorisés)
+ * - Terrains = Biomes ∪ Déserts (avec articles: du/de la/de l’/des)
+ * - Inventaire PNJ : curseur EXACT 0–4 objets (doublons ok)
+ * - Familles d’objets = CHOIX de bonus au craft (Arme Pierre=1, Silex=2, Fer=3)
+ * - Caravane : sliders PNJ hébergés & total ressources, listes faune/flore
+ * - Export JSON + Impression
  */
 
 // ———————————————————————————— RNG (seeded)
@@ -34,31 +32,45 @@ function strToSeed(s: string) {
   return h >>> 0;
 }
 
-function pick<T>(rng: () => number, arr: readonly T[]): T { return arr[Math.floor(rng() * arr.length)]; }
+function pick<T>(rng: () => number, arr: readonly T[]): T {
+  return arr[Math.floor(rng() * arr.length)];
+}
+
 function pickN<T>(rng: () => number, arr: readonly T[], n: number): T[] {
   const a = Array.from(arr);
   const out: T[] = [];
-  for (let i = 0; i < n && a.length; i++) { const idx = Math.floor(rng() * a.length); out.push(a[idx]); a.splice(idx,1); }
+  for (let i = 0; i < n && a.length; i++) {
+    const idx = Math.floor(rng() * a.length);
+    out.push(a[idx]);
+    a.splice(idx, 1);
+  }
   return out;
 }
+
 function pickWithReplacement<T>(rng: () => number, arr: readonly T[], n: number): T[] {
   const out: T[] = [];
-  for (let i=0;i<n;i++) out.push(arr[Math.floor(rng()*arr.length)] as T);
+  for (let i = 0; i < n; i++) out.push(arr[Math.floor(rng() * arr.length)] as T);
   return out;
+}
+
+function pick2<T>(rng: () => number, arr: readonly T[]): [T, T] {
+  const a = arr[Math.floor(rng() * arr.length)];
+  const b = arr[Math.floor(rng() * arr.length)];
+  return [a, b];
 }
 
 // ———————————————————————————— Données Règles
 export const SKILLS = {
-  Martial: ["Contact", "Distance", "Ruse"],
-  Survie: ["Traque", "Résilience", "Débrouillardise"],
-  Technique: ["Artisanat", "Érudition", "Occultisme"],
-  Social: ["Culture", "Communication", "Artistique"],
+  Martial: ["Contact", "Distance", "Ruse"] as const,
+  Survie: ["Traque", "Résilience", "Débrouillardise"] as const,
+  Technique: ["Artisanat", "Érudition", "Occultisme"] as const,
+  Social: ["Culture", "Communication", "Artistique"] as const,
 } as const;
-export type Skill = (typeof SKILLS)[keyof typeof SKILLS][number];
 export type Famille = keyof typeof SKILLS;
+export type Skill = (typeof SKILLS)[Famille][number];
 
-// Dictionnaire d'épithètes (starter pack – modifiable). 6–8/compétence.
-const EPITHETES: Record<Skill, string[]> = {
+// Dictionnaire d’épithètes (starter, modifiable)
+const EPITHETES: Record<Skill, readonly string[]> = {
   Contact: ["Cornu", "Chargeur", "Épineux", "Piquant", "Heurtant", "Sanglier"],
   Distance: ["Ailé", "Guetteur", "Perce‑Ciel", "Sagittaire", "Faucon", "Vigie"],
   Ruse: ["Tisseur", "Araignée", "Renard", "Fourbe", "Piégeur", "Luron"],
@@ -73,14 +85,14 @@ const EPITHETES: Record<Skill, string[]> = {
   Artistique: ["Lyrique", "Mélodique", "Peintre", "Tambour", "Rossignol", "Inspirant"],
 };
 
-// Clans & familles
+// Clans
 export const CLANS = [
-  { key: "yashan", label: "Yashan", famille: "Social" },
-  { key: "veygirh", label: "Veygirh", famille: "Technique" },
-  { key: "tengun", label: "Tengun", famille: "Martial" },
-  { key: "bakaar", label: "Bakaar", famille: "Survie" },
-  { key: "ulgar", label: "Ulgar", famille: "Technique" },
-  { key: "khazrak", label: "Khazrak", famille: "Survie" },
+  { key: "yashan", label: "Yashan", famille: "Social" as const },
+  { key: "veygirh", label: "Veygirh", famille: "Technique" as const },
+  { key: "tengun", label: "Tengun", famille: "Martial" as const },
+  { key: "bakaar", label: "Bakaar", famille: "Survie" as const },
+  { key: "ulgar", label: "Ulgar", famille: "Technique" as const },
+  { key: "khazrak", label: "Khazrak", famille: "Survie" as const },
 ] as const;
 export type ClanKey = typeof CLANS[number]["key"];
 
@@ -126,7 +138,7 @@ export const RESSOURCES = [
   "Bois","Résine","Fibre","Viande","Cuir","Os","Graisse","Plante","Glande","Pierre","Silex","Fer","Eau"
 ] as const;
 
-// ———————————————————————————— Inventaire (familles d’objets)
+// ———————————————————————————— Inventaire & Objets
 export type ObjetFamille =
   | "Arme" | "Outil" | "Armure" | "Piège" | "Abri" | "Instrument" | "Feu"
   | "Monte" | "Sac" | "Habits" | "Teinture" | "Livre" | "Lumière" | "Décoration";
@@ -134,24 +146,24 @@ export type ObjetFamille =
 export type Materiau = "Pierre" | "Silex" | "Fer"; // pour armes/outils/armures/pièges
 export type Palier = "Rudimentaire" | "Raffiné" | "Transformé"; // autres familles
 
-const FAMILLE_BONUS: Record<ObjetFamille, { type: "skills"|"pa"|"stock"|"voyage"|"tag"; choices?: Skill[] }>= {
-  Arme:        { type: "skills", choices: ["Contact","Distance"] as Skill[] },
-  Outil:       { type: "skills", choices: ["Traque","Artisanat"] as Skill[] },
+const FAMILLE_BONUS: Record<ObjetFamille, { type: "skills"|"pa"|"stock"|"voyage"; choices?: readonly Skill[] }>= {
+  Arme:        { type: "skills", choices: SKILLS.Martial.slice(0,2) }, // Contact/Distance
+  Outil:       { type: "skills", choices: ["Traque","Artisanat"] },
   Armure:      { type: "pa" },
-  Piège:       { type: "skills", choices: ["Ruse","Traque"] as Skill[] },
-  Abri:        { type: "skills", choices: ["Résilience"] as Skill[] },
-  Instrument:  { type: "skills", choices: ["Artistique","Culture"] as Skill[] },
-  Feu:         { type: "skills", choices: ["Résilience"] as Skill[] }, // + tag chaleur (later)
+  Piège:       { type: "skills", choices: ["Ruse","Traque"] },
+  Abri:        { type: "skills", choices: ["Résilience"] },
+  Instrument:  { type: "skills", choices: ["Artistique","Culture"] },
+  Feu:         { type: "skills", choices: ["Résilience"] },
   Monte:       { type: "voyage" },
   Sac:         { type: "stock" },
-  Habits:      { type: "skills", choices: ["Culture"] as Skill[] },
-  Teinture:    { type: "skills", choices: ["Artistique"] as Skill[] },
-  Livre:       { type: "skills", choices: ["Érudition"] as Skill[] },
-  Lumière:     { type: "skills", choices: ["Traque"] as Skill[] },
-  Décoration:  { type: "skills", choices: ["Culture","Artistique"] as Skill[] },
+  Habits:      { type: "skills", choices: ["Culture"] },
+  Teinture:    { type: "skills", choices: ["Artistique"] },
+  Livre:       { type: "skills", choices: ["Érudition"] },
+  Lumière:     { type: "skills", choices: ["Traque"] },
+  Décoration:  { type: "skills", choices: ["Culture","Artistique"] },
 };
 
-const OBJETS_PAR_FAMILLE: Record<ObjetFamille, string[]> = {
+const OBJETS_PAR_FAMILLE: Record<ObjetFamille, readonly string[]> = {
   Arme: ["Hache","Épée","Masse","Lance","Arc","Fronde"],
   Outil: ["Boussole à mousse","Marteau","Pelle","Sceau","Corde","Couteau"],
   Armure: ["Bouclier","Casque","Plastron","Jupe lamellaire"],
@@ -180,15 +192,17 @@ export type Objet = {
   voyage?: number;  // jetons voyage (placeholder)
 };
 
+const MATERIAL_FAMILIES: ReadonlyArray<ObjetFamille> = ["Arme","Outil","Armure","Piège"];
+
 function bonusesCountFor(material?: Materiau){
-  if(!material) return 1; // fallback
+  if(!material) return 1;
   if(material === "Pierre") return 1;
-  if(material === "Silex") return 2; // conforme v1
+  if(material === "Silex") return 2;
   return 3; // Fer
 }
 
 function generateObjet(rng:()=>number): Objet {
-  const famille = pick(rng, Object.keys(OBJETS_PAR_FAMILLE) as ObjetFamille[]);
+  const famille = pick(rng, Object.keys(OBJETS_PAR_FAMILLE) as unknown as ObjetFamille[]);
   const nom = pick(rng, OBJETS_PAR_FAMILLE[famille]);
   const spec = FAMILLE_BONUS[famille];
 
@@ -196,30 +210,27 @@ function generateObjet(rng:()=>number): Objet {
   let bonuses: Skill[] = [];
   let pa: number | undefined; let stock: number | undefined; let voyage: number | undefined;
 
-  if(["Arme","Outil","Armure","Piège"].includes(famille as any)){
-    materiau = pick(rng, ["Pierre","Silex","Fer"]);
+  if (MATERIAL_FAMILIES.includes(famille)) {
+    materiau = pick(rng, ["Pierre","Silex","Fer"] as const);
   } else {
-    palier = pick(rng, ["Rudimentaire","Raffiné","Transformé"]);
+    palier = pick(rng, ["Rudimentaire","Raffiné","Transformé"] as const);
   }
 
   if(spec.type === "skills"){
     const n = bonusesCountFor(materiau);
     const baseChoices = spec.choices ?? [];
-    // doublons autorisés
     bonuses = pickWithReplacement(rng, baseChoices, Math.max(1,n));
   } else if(spec.type === "pa"){
-    pa = 1; // +1 point d’armure par pièce
+    pa = 1;
   } else if(spec.type === "stock"){
-    stock = pick(rng, [3,4,5]);
+    stock = pick(rng, [3,4,5] as const);
   } else if(spec.type === "voyage"){
-    voyage = 1; // jeton voyage
-  } else if(spec.type === "tag"){
-    // réservé pour props futures
+    voyage = 1;
   }
 
   return {
     id: `${nom}-${Math.floor(rng()*1e9).toString(36)}`,
-    famille: famille as ObjetFamille,
+    famille,
     nom,
     materiau,
     palier,
@@ -229,7 +240,7 @@ function generateObjet(rng:()=>number): Objet {
 }
 
 // ———————————————————————————— PNJ
-const NOMS = [
+const NOMS: readonly string[] = [
   "Aren","Belka","Caro","Darel","Edrin","Faro","Galen","Haska","Irin","Jaro","Kael","Leni","Maro","Neris","Orin","Pasha","Ryn","Sora","Talan","Vaska","Yaro","Zerin"
 ];
 
@@ -251,26 +262,26 @@ export type PNJ = {
 };
 
 function generatePNJ(rng:()=>number, objetsParPNJ:number): PNJ {
-  const clan = pick(rng, CLANS);
-  // +2 compétences dans la famille (doublons autorisés)
-  const famSkills = SKILLS[clan.famille] as readonly Skill[];
-  const clanBonus = pickWithReplacement(rng, famSkills as unknown as Skill[], 2) as Skill[];
+  const clanObj = pick(rng, CLANS);
+  const famSkills = SKILLS[clanObj.famille];
+  const clanBonus = pickWithReplacement(rng, famSkills, 2);
 
-  // Titre = 2 compétences parmi les 12 (doublons autorisés)
-  const allSkills: Skill[] = [...SKILLS.Martial, ...SKILLS.Survie, ...SKILLS.Technique, ...SKILLS.Social] as unknown as Skill[];
-  const titreSkills = pickWithReplacement(rng, allSkills, 2) as [Skill, Skill];
+  const allSkills: readonly Skill[] = [
+    ...SKILLS.Martial,
+    ...SKILLS.Survie,
+    ...SKILLS.Technique,
+    ...SKILLS.Social,
+  ];
+  const [s1, s2] = pick2(rng, allSkills);
+  const terrain = pick(rng, [...DESERTS, ...BIOMES] as const);
+  const titre = titreFromSkillsAndTerrain(rng, s1, s2, terrain);
 
-  const terrain = pick(rng, [...DESERTS, ...BIOMES] as unknown as Terrain[]);
-  const titre = titreFromSkillsAndTerrain(rng, titreSkills[0], titreSkills[1], terrain);
-
-  // Inventaire
   const inventaire: Objet[] = [];
   for(let i=0;i<objetsParPNJ;i++) inventaire.push(generateObjet(rng));
 
-  // Agrégation
   const set = new Set<Skill>();
   clanBonus.forEach(s=>set.add(s));
-  titreSkills.forEach(s=>set.add(s));
+  set.add(s1); set.add(s2);
   let pa = 0; let stockBonus = 0; let voyage = 0;
   inventaire.forEach(o=>{
     o.bonuses.forEach(b=>set.add(b));
@@ -282,11 +293,11 @@ function generatePNJ(rng:()=>number, objetsParPNJ:number): PNJ {
   return {
     id: `pnj-${Math.floor(rng()*1e9).toString(36)}`,
     nom: pick(rng, NOMS),
-    clan: clan.key,
-    clanLabel: clan.label,
-    clanFamille: clan.famille,
+    clan: clanObj.key,
+    clanLabel: clanObj.label,
+    clanFamille: clanObj.famille,
     clanBonus,
-    titreSkills,
+    titreSkills: [s1, s2],
     terrain,
     titre,
     inventaire,
@@ -296,17 +307,17 @@ function generatePNJ(rng:()=>number, objetsParPNJ:number): PNJ {
 }
 
 // ———————————————————————————— Caravane (v1 placeholders)
-const CAR_NAMES = ["La Pèlerine","La Girelle","L’Errante","La Rosée Nocturne","La Braise Douce","L’Aiguille des Sables"];
-const FAUNE = ["Chèvres des sables","Rocs juvéniles","Lézards de bât","Corbeaux messagers","Chien pisteur"];
-const FLORE = ["Herbes médicinales","Mousses rituelles","Graines nutritives","Lianes tressables","Champignons alchimiques"];
+const CAR_NAMES = ["La Pèlerine","La Girelle","L’Errante","La Rosée Nocturne","La Braise Douce","L’Aiguille des Sables"] as const;
+const FAUNE = ["Chèvres des sables","Rocs juvéniles","Lézards de bât","Corbeaux messagers","Chien pisteur"] as const;
+const FLORE = ["Herbes médicinales","Mousses rituelles","Graines nutritives","Lianes tressables","Champignons alchimiques"] as const;
 
 export type Caravane = {
   id: string;
   nom: string;
   totalRessources: number; // pool global (non réparti)
   pnjHeberges: number;     // via slider
-  faune: string[];         // list only (règles plus tard)
-  flore: string[];         // list only (règles plus tard)
+  faune: readonly string[];
+  flore: readonly string[];
 };
 
 function generateCaravane(rng:()=>number, totalR:number, pnjCount:number): Caravane {
@@ -322,12 +333,6 @@ function generateCaravane(rng:()=>number, totalR:number, pnjCount:number): Carav
 
 // ———————————————————————————— UI helpers
 function Badge({children}:{children:React.ReactNode}){return <span className="px-2 py-0.5 rounded-lg bg-white/10 border border-white/15 text-xs">{children}</span>;}
-
-function Progress({value}:{value:number}){return (
-  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
-    <div className="h-2 bg-white/70" style={{width: `${Math.max(0,Math.min(100,value))}%`}} />
-  </div>
-);}
 
 function ArticleTerrain({t}:{t:Terrain}){return <>{TERRAIN_ARTICLE[t]} {t}</>}
 
@@ -379,7 +384,7 @@ function PNJCard({pnj}:{pnj:PNJ}){
         </div>
         <div className="mt-3 text-sm">
           <div className="text-neutral-400">Bonus de Clan ({pnj.clanFamille})</div>
-          <div className="mt-1 flex flex-wrap gap-2">{pnj.clanBonus.map((b,i)=> <Badge key={i}>{b}</Badge>)}</div>
+          <div className="mt-1 flex flex-wrap gap-2">{pnj.clanBonus.map((b,i)=> <Badge key={`${b}-${i}`}>{b}</Badge>)}</div>
         </div>
         <div className="mt-3 text-sm">
           <div className="text-neutral-400">Inventaire ({pnj.inventaire.length})</div>
@@ -427,7 +432,7 @@ function CaravanePanel({car}:{car:Caravane}){
           <div className="flex flex-wrap gap-2">{car.flore.map(f=> <Badge key={f}>{f}</Badge>)}</div>
         </div>
       </div>
-      <div className="mt-4 text-xs text-neutral-400">La répartition par type (Bois, Résine, Eau, …) sera gérée dans une prochaine version.</div>
+      <div className="mt-4 text-xs text-neutral-400">Répartition détaillée (Bois, Résine, Eau, …) et règles spéciales (Eau/Viande/Plantes) à venir.</div>
     </div>
   );
 }
@@ -443,15 +448,17 @@ function download(filename: string, content: string, mime: string) {
 export default function EcoNomGeneratorV1(){
   const [seed, setSeed] = useState("EcoNom-v1");
   const [pnjCount, setPnjCount] = useState(6);
-  const [objetsParPNJ, setObjetsParPNJ] = useState(2); // réglette 0–4 EXACT
-  const [carPNJ, setCarPNJ] = useState(6); // réglette PNJ côté caravane (placeholder)
-  const [totalR, setTotalR] = useState(30); // slider total ressources (pool)
+  const [objetsParPNJ, setObjetsParPNJ] = useState(2); // EXACT 0–4
+  const [carPNJ, setCarPNJ] = useState(6);
+  const [totalR, setTotalR] = useState(30);
 
   const reroll = () => setSeed((s)=> s + ":" + Math.floor(Math.random()*1e6).toString(36));
 
   const pnjList = useMemo(()=>{
     const r = mulberry32(strToSeed(seed));
-    return Array.from({length: Math.max(1, Math.min(50, pnjCount))}, ()=> generatePNJ(r, Math.max(0, Math.min(4, objetsParPNJ))));
+    const count = Math.max(1, Math.min(50, pnjCount));
+    const obj = Math.max(0, Math.min(4, objetsParPNJ));
+    return Array.from({length: count}, ()=> generatePNJ(r, obj));
   }, [seed, pnjCount, objetsParPNJ]);
 
   const caravan = useMemo(()=>{
